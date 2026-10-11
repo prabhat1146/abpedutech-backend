@@ -127,23 +127,23 @@ const QuestionSchema = new mongoose.Schema(
     },
 
     // Source
-    source: {
-      type: {
-        type: String,
-        enum: ["original", "pyq", "imported", "ai"],
-        default: "original",
-      },
+    // source: {
+    //   type: {
+    //     type: String,
+    //     enum: ["original", "pyq", "imported", "ai"],
+    //     default: "original",
+    //   },
 
-      examId: String,
+    //   examId: String,
 
-      year: Number,
+    //   year: Number,
 
-      shift: Number,
+    //   shift: Number,
 
-      paper: Number,
+    //   paper: Number,
 
-      questionNumber: Number,
-    },
+    //   questionNumber: Number,
+    // },
 
     // Academic
 
@@ -201,6 +201,73 @@ const QuestionSchema = new mongoose.Schema(
         },
       },
     },
+
+    askedBy: [
+      {
+        organisation: {
+          id: {
+            type: String,
+            trim: true,
+            default: "",
+          },
+          name: {
+            type: String,
+            trim: true,
+            default: "",
+          },
+        },
+
+        exam: {
+          id: {
+            type: String,
+            trim: true,
+            default: "",
+          },
+          name: {
+            type: String,
+            trim: true,
+            default: "",
+          },
+        },
+
+        paper: {
+          id: {
+            type: String,
+            enum: ["1", "2"],
+            trim: true,
+            default: "",
+          },
+          name: {
+            type: String,
+            enum: ["first", "second"],
+            trim: true,
+            default: "",
+          },
+        },
+
+        shift: {
+          id: {
+            type: String,
+            enum: ["1", "2", "3"],
+            trim: true,
+            default: "1",
+          },
+          name: {
+            type: String,
+            enum: ["first", "second", "third"],
+            trim: true,
+            default: "first",
+          },
+        },
+
+        year: {
+          type: Number,
+          min: 1900,
+          max: 9999,
+          default: null,
+        },
+      },
+    ],
 
     // Search
     tags: [String],
@@ -268,15 +335,11 @@ const QuestionSchema = new mongoose.Schema(
       default: 1,
     },
 
-    parentQuestionId: {
-      type: String,
-      default: null,
-    },
 
     // Audit
     createdBy: {
       type: String,
-      required: true,
+      required: false,
     },
 
     updatedBy: String,

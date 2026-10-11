@@ -3,6 +3,7 @@ const cors = require("cors");
 const helmet = require("helmet");
 const morgan = require("morgan");
 const cookieParser = require("cookie-parser");
+const errorHandler = require("./middleware/errorHandler");
 
 const app = express();
 
@@ -41,7 +42,9 @@ app.get("/", (req, res) => {
 // app.use("/api/v1/users", require("./features/users/user.routes"));
 app.use("/api/v1/questions", require("./features/questions/question.routes"));
 app.use("/api/v1/academic-details/subjects", require("./features/academic/subjects/subjects.routes"));
-// app.use("/api/v1/tests", require("./features/tests/test.routes"));
+app.use("/api/v1/academic-details/chapters", require("./features/academic/chapters/chapterRoutes"));
+app.use("/api/v1/test/mocktest", require("./features/mocktests/mockTestRoutes"));
+app.use("/api/v1/test/mocktest/:id/section", require("./features/mocktests/sections/sectionRoutes"));
 
 // app.get("/test", (req, res) => {
 //     res.send("Workingg");
@@ -61,13 +64,6 @@ app.use((req, res) => {
 // Global Error Handler
 // =======================
 
-app.use((err, req, res, next) => {
-    console.error(err);
-
-    res.status(err.status || 500).json({
-        success: false,
-        message: err.message || "Internal Server Error"
-    });
-});
+app.use(errorHandler);
 
 module.exports = app;

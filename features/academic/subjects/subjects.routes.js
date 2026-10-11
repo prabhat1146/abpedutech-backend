@@ -7,10 +7,10 @@ const {
   getSubjectById,
   updateSubject,
   deleteSubject,
-} = require("../subjects/subjects.controllers");
+} = require("./subjects.controllers");
 
-router.post("/", createSubject);
-router.get("/", getSubjects);
+router.post("/createSubject", createSubject);
+router.get("/getSubjects", getSubjects);
 router.get("/:id", getSubjectById);
 router.put("/:id", updateSubject);
 router.delete("/:id", deleteSubject);

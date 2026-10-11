@@ -1,4 +1,4 @@
-const Question = require("./question.model");
+const Question = require("./questionSchema");
 
 class QuestionService {
   async create(data) {

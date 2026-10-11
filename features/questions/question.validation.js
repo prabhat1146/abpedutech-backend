@@ -1,107 +1,113 @@
 const Joi = require("joi");
 
 const optionSchema = Joi.object({
-    optionId: Joi.string().allow("").optional(),
-
-    text: Joi.string().trim().required(),
-
-    image: Joi.string().allow("").default("")
+  optionId: Joi.string().trim().allow("").default(""),
+  text: Joi.string().trim().required(),
+  image: Joi.string().allow("").default(""),
 });
 
 const validateOptions = () => {
+  return Joi.array()
+    .items(optionSchema)
+    .custom((value, helpers) => {
+      const { questionType } = helpers.state.ancestors[0];
 
-    return Joi.array()
-        .items(optionSchema)
-        .custom((value, helpers) => {
+      if (
+        ["mcq", "msq", "true_false", "assertion_reason"].includes(
+          questionType
+        )
+      ) {
+        if (value.length !== 4 && value.length !== 5) {
+          return helpers.error("options.invalidCount");
+        }
+      }
 
-            const { questionType } = helpers.state.ancestors[0];
+      if (["numerical", "subjective"].includes(questionType)) {
+        if (value.length > 0) {
+          return helpers.error("options.notAllowed");
+        }
+      }
 
-            // MCQ, MSQ, True/False, Assertion & Reason
-            if (["mcq", "msq", "true_false", "assertion_reason"].includes(questionType)) {
-
-                if (value.length !== 4 && value.length !== 5) {
-                    return helpers.error("options.invalidCount");
-                }
-
-            }
-
-            // Numerical & Subjective
-            if (["numerical", "subjective"].includes(questionType)) {
-
-                if (value.length > 0) {
-                    return helpers.error("options.notAllowed");
-                }
-
-            }
-
-            return value;
-
-        })
-        .messages({
-            "options.invalidCount":
-                "This question type must have exactly 4 or 5 options.",
-
-            "options.notAllowed":
-                "Numerical and Subjective questions must not contain options."
-        });
-
+      return value;
+    })
+    .messages({
+      "options.invalidCount":
+        "This question type must have exactly 4 or 5 options.",
+      "options.notAllowed":
+        "Numerical and Subjective questions must not contain options.",
+    });
 };
-
 
 const academicSchema = Joi.object({
   subject: Joi.object({
-    id: Joi.string().required(),
+    id: Joi.string().trim().required(),
     name: Joi.string().trim().required(),
   }).required(),
 
   chapter: Joi.object({
-    id: Joi.string().required(),
+    id: Joi.string().trim().required(),
     name: Joi.string().trim().required(),
   }).required(),
 
   topic: Joi.object({
-    id: Joi.string().required(),
+    id: Joi.string().trim().required(),
     name: Joi.string().trim().required(),
   }).required(),
 
   subTopic: Joi.object({
-    id: Joi.string().required(),
+    id: Joi.string().trim().required(),
     name: Joi.string().trim().required(),
   }).required(),
+}).required();
+
+const askedBySchema = Joi.object({
+  organisation: Joi.object({
+    id: Joi.string().trim().allow("").default(""),
+    name: Joi.string().trim().allow("").default(""),
+  }).default({}),
+
+  examName: Joi.object({
+    id: Joi.string().trim().allow("").default(""),
+    name: Joi.string().trim().allow("").default(""),
+  }).default({}),
+
+  paper: Joi.object({
+    id: Joi.string().valid("1", "2").allow("").default(""),
+    name: Joi.string().valid("first", "second").allow("").default(""),
+  }).default({}),
+
+  shift: Joi.object({
+    id: Joi.string().valid("1", "2", "3").default("1"),
+    name: Joi.string().valid("first", "second", "third").default("first"),
+  }).default({}),
+
+  year: Joi.number()
+    .integer()
+    .min(1900)
+    .max(9999)
+    .allow(null)
+    .default(null),
 });
 
 const questionValidation = Joi.object({
-
-  questionId: Joi.string().allow("").optional(),
+  questionId: Joi.string().trim().required(),
 
   questionLang: Joi.object({
-
     eng: Joi.object({
-
       question: Joi.string().trim().required(),
-
-      options: validateOptions(),
-
+      options: validateOptions().required(),
       explanation: Joi.string().allow("").default(""),
-
-      hint: Joi.string().allow("").default("")
-
+      hint: Joi.string().allow("").default(""),
     }).required(),
 
     hindi: Joi.object({
-
-      question: Joi.string().allow("").default(""),
-
+      question: Joi.string().trim().allow("").default(""),
       options: Joi.array()
         .items(optionSchema)
         .default([]),
-
       explanation: Joi.string().allow("").default(""),
-
-      hint: Joi.string().allow("").default("")
-
-    }).default({})
-
+      hint: Joi.string().allow("").default(""),
+    }).default({}),
   }).required(),
 
   questionType: Joi.string()
@@ -116,40 +122,25 @@ const questionValidation = Joi.object({
     .required(),
 
   correctAnswers: Joi.array()
-    .items(Joi.string())
-    .min(1)
-    .required(),
+    .items(Joi.string().trim())
+    .default([]),
 
   difficulty: Joi.string()
     .valid("easy", "medium", "hard")
     .default("medium"),
 
-  source: Joi.object({
+  academic: academicSchema,
 
-    type: Joi.string()
-      .valid("original", "pyq", "imported", "ai")
-      .default("original"),
-
-    examId: Joi.string().allow(""),
-
-    year: Joi.number(),
-
-    shift: Joi.number(),
-
-    paper: Joi.number(),
-
-    questionNumber: Joi.number()
-
-  }).default(),
-
-  academic: academicSchema.required(),
+  askedBy: Joi.array()
+    .items(askedBySchema)
+    .default([]),
 
   tags: Joi.array()
-    .items(Joi.string())
+    .items(Joi.string().trim())
     .default([]),
 
   keywords: Joi.array()
-    .items(Joi.string())
+    .items(Joi.string().trim())
     .default([]),
 
   status: Joi.string()
@@ -160,33 +151,35 @@ const questionValidation = Joi.object({
     .valid("public", "private")
     .default("public"),
 
-  attachments: Joi.array().items(
+  analytics: Joi.object({
+    totalAttempts: Joi.number().default(0),
+    correctAttempts: Joi.number().default(0),
+    wrongAttempts: Joi.number().default(0),
+    skippedAttempts: Joi.number().default(0),
+    averageTime: Joi.number().default(0),
+  }).default({}),
 
-    Joi.object({
+  attachments: Joi.array()
+    .items(
+      Joi.object({
+        type: Joi.string()
+          .valid("image", "audio", "video", "pdf")
+          .required(),
 
-      type: Joi.string()
-        .valid("image", "audio", "video", "pdf")
-        .required(),
+        url: Joi.string().allow("").required(),
 
-      url: Joi.string().required(),
-
-      caption: Joi.string().allow("")
-
-    })
-
-  ).default([]),
+        caption: Joi.string().allow("").default(""),
+      })
+    )
+    .default([]),
 
   version: Joi.number().default(1),
 
-  parentQuestionId: Joi.string()
-    .allow(null, ""),
-
-  createdBy: Joi.string().required(),
+  createdBy: Joi.string().allow(""),
 
   updatedBy: Joi.string().allow(""),
 
-  approvedBy: Joi.string().allow("")
-
+  approvedBy: Joi.string().allow(""),
 });
 
 module.exports = questionValidation;

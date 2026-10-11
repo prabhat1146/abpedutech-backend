@@ -9,9 +9,11 @@ class QuestionController {
     try {
       const payload = { ...req.body };
 
+      console.log(payload);
+
       // const lastQuestionId = await getLastQuestion();
       const nextQuestionId = await getNextQuestionId();
-      console.log(nextQuestionId)
+      console.log(nextQuestionId);
 
       payload.questionId = nextQuestionId;
 
@@ -37,6 +39,13 @@ class QuestionController {
           ...option,
           optionId: optionIds[index],
         }));
+
+      const optionNo = Number(payload.correctAnswers);
+
+      const correctOption =
+        nextQuestionId.replace(/^QU/, "OP") + String(optionNo + 1);
+
+      payload.correctAnswers = correctOption;
 
       // Save
       const question = await QuestionService.create(payload);
@@ -87,7 +96,7 @@ class QuestionController {
       if (response) {
         return success(res, null, "Question deleted successfully.");
       }
-      console.log(response);
+      console.log(req.params.id);
 
       return error(res, null, "Question Id not found.", 400);
     } catch (error) {

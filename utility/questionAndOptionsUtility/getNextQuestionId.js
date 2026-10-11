@@ -1,4 +1,4 @@
-const Question = require("../../features/questions/question.model");
+const Question = require("../../features/questions/questionSchema");
 
 const getNextQuestionId = async () => {
   const questions = await Question.find()
