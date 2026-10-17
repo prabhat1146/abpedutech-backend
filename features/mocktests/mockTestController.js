@@ -337,48 +337,37 @@ const setUpdatedBy = (mockTest, req) => {
 // POST /api/mock-tests
 // ==========================================
 
+
 exports.createMockTest = async (req, res) => {
   try {
     const data = pickEditableFields(req.body);
 
-    // Preserve the original values provided by the client.
+    // Preserve requested marks
     const requestedTotalMarks = req.body.totalMarks;
     const requestedPassingMarks = req.body.passingMarks;
 
+    // Validate input
     const errors = validateAndNormalize(data, true);
 
     if (errors.length) {
-      return res.status(400).json({
-        success: false,
-        message: errors.join(" "),
-      });
+      return error(res, null, errors.join(" "), 400);
     }
 
+    // Generate slug
     if (data.slug === undefined) {
       data.slug = slugify(data.title);
     }
 
     if (!data.slug) {
-      return res.status(400).json({
-        success: false,
-        message: "A valid title or slug is required.",
-      });
+      return error(
+        res,
+        null,
+        "A valid title or slug is required.",
+        400
+      );
     }
 
-    data.id =
-      typeof req.body.id === "string" && req.body.id.trim()
-        ? req.body.id.trim()
-        : `MOCK-${new mongoose.Types.ObjectId().toString()}`;
-
-    // A new mock test always starts as a draft.
-    data.status = "Draft";
-    data.sections = [];
-    data.totalQuestions = 0;
-    data.totalAttempts = 0;
-    data.totalCompletions = 0;
-
-    // Do not calculate or overwrite these fields.
-    // Preserve the values from the request when provided.
+    // Preserve marks provided by the client
     if (requestedTotalMarks !== undefined) {
       data.totalMarks = requestedTotalMarks;
     }
@@ -387,15 +376,36 @@ exports.createMockTest = async (req, res) => {
       data.passingMarks = requestedPassingMarks;
     }
 
+    // Validate availability dates
     const availabilityError = validateAvailability(data);
 
     if (availabilityError) {
-      return res.status(400).json({
-        success: false,
-        message: availabilityError,
-      });
+      return error(res, null, availabilityError, 400);
     }
 
+    // Find the latest existing sequential mock test ID
+    const lastMockTest = await MockTest.findOne({
+      id: { $regex: /^MOCKTEST\d+$/ },
+    })
+      .sort({ id: -1 })
+      .select("id")
+      .lean();
+
+    // Calculate the next ID
+    const lastNumber = lastMockTest
+      ? parseInt(lastMockTest.id.replace("MOCKTEST", ""), 10)
+      : 0;
+
+    data.id = `MOCKTEST${String(lastNumber + 1).padStart(5, "0")}`;
+
+    // Every new mock test starts as a draft
+    data.status = "Draft";
+    data.sections = [];
+    data.totalQuestions = 0;
+    data.totalAttempts = 0;
+    data.totalCompletions = 0;
+
+    // Set creator and updater
     const userId = req.user?._id || req.user?.id;
 
     if (userId && isValidId(String(userId))) {
@@ -403,20 +413,21 @@ exports.createMockTest = async (req, res) => {
       data.updatedBy = userId;
     }
 
+    // Create and save mock test
     const mockTest = new MockTest(data);
 
     await mockTest.save();
 
-    return res.status(201).json({
-      success: true,
-      message: "Mock test created successfully. Add sections next.",
-      data: mockTest,
-    });
-  } catch (error) {
-    return sendError(res, error);
+    return success(
+      res,
+      mockTest,
+      "Mock test created successfully. Add sections next.",
+      201
+    );
+  } catch (err) {
+    return sendError(res, err);
   }
 };
-
 
 // ==========================================
 // GET ALL MOCK TESTS

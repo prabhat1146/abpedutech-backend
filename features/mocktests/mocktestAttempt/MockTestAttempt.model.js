@@ -12,6 +12,7 @@ const answerSchema = new mongoose.Schema(
     selectedOption: {
       type: String,
       default: "",
+      trim: true,
     },
 
     isMarkedForReview: {
@@ -65,13 +66,30 @@ const mockTestAttemptSchema = new mongoose.Schema(
         "Submitted",
         "Expired",
         "Evaluated",
+        "NotStarted",
       ],
-      default: "InProgress",
+      default: "NotStarted",
     },
 
     answers: {
       type: [answerSchema],
       default: [],
+    },
+
+    // Marks awarded for each correct answer
+    positiveMarks: {
+      type: Number,
+      required: true,
+      min: 0,
+      default: 1,
+    },
+
+    // Marks deducted for each incorrect answer
+    negativeMarks: {
+      type: Number,
+      required: true,
+      min: 0,
+      default: 0,
     },
 
     obtainedMarks: {
@@ -101,7 +119,7 @@ mockTestAttemptSchema.index(
   }
 );
 
-// Fetch attempts for a student's test history.
+// Fetch a student's attempts for a specific mock test.
 mockTestAttemptSchema.index({
   student: 1,
   mockTest: 1,

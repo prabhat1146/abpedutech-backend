@@ -39,12 +39,14 @@ app.get("/", (req, res) => {
 // =======================
 
 // app.use("/api/v1/auth", require("./features/auth/auth.routes"));
-// app.use("/api/v1/users", require("./features/users/user.routes"));
+app.use("/api/v1/users", require("./features/users/user.route"));
 app.use("/api/v1/questions", require("./features/questions/question.routes"));
 app.use("/api/v1/academic-details/subjects", require("./features/academic/subjects/subjects.routes"));
 app.use("/api/v1/academic-details/chapters", require("./features/academic/chapters/chapterRoutes"));
 app.use("/api/v1/test/mocktest", require("./features/mocktests/mockTestRoutes"));
 app.use("/api/v1/test/mocktest/:id/section", require("./features/mocktests/sections/sectionRoutes"));
+//attempt
+app.use("/api/v1/test/mocktest/attempt", require("./features/mocktests/mocktestAttempt/mockTestAttemptRoutes"));
 
 // app.get("/test", (req, res) => {
 //     res.send("Workingg");
