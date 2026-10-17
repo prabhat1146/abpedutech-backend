@@ -1,10 +1,8 @@
-
 const mongoose = require("mongoose");
 const MockTest = require("./mocktest.model");
+const { success, error } = require("../../utility/response");
 
 // Fields admins can update through this controller.
-// Sections and calculated totals are managed separately.
-
 const editableFields = [
   "title",
   "slug",
@@ -32,7 +30,6 @@ const editableFields = [
   "isFeatured",
   "accessCode",
 ];
-
 
 const LANGUAGES = ["English", "Hindi", "Both"];
 const VISIBILITIES = ["Public", "Private"];
@@ -62,42 +59,36 @@ const pickEditableFields = (body = {}) => {
   return result;
 };
 
-const sendError = (res, error) => {
-  console.error("MockTest controller error:", error);
+// Centralized error handler using the response utility.
+const sendError = (res, err) => {
+  console.error("MockTest controller error:", err);
 
   if (
-    error.name === "ValidationError" ||
-    error.name === "StrictModeError"
+    err.name === "ValidationError" ||
+    err.name === "StrictModeError"
   ) {
-    return res.status(400).json({
-      success: false,
-      message: error.message,
-    });
+    return error(res, null, err.message, 400);
   }
 
-  if (error.name === "CastError") {
-    return res.status(400).json({
-      success: false,
-      message: `Invalid value for ${error.path}.`,
-    });
+  if (err.name === "CastError") {
+    return error(res, null, `Invalid value for ${err.path}.`, 400);
   }
 
-  if (error.code === 11000) {
-    const field = Object.keys(error.keyPattern || {})[0];
+  if (err.code === 11000) {
+    const field = Object.keys(err.keyPattern || {})[0];
 
-    return res.status(409).json({
-      success: false,
-      message: `A mock test with this ${field || "unique field"} already exists.`,
-    });
+    return error(
+      res,
+      null,
+      `A mock test with this ${field || "unique field"} already exists.`,
+      409
+    );
   }
 
-  return res.status(500).json({
-    success: false,
-    message: "Internal server error.",
-  });
+  return error(res, null, "Internal server error.", 500);
 };
 
-// Find by MongoDB _id or custom mock test id.
+// Find by MongoDB _id or custom mock test ID.
 const findMockTest = (identifier) => {
   if (typeof identifier !== "string" || !identifier.trim()) {
     return MockTest.findOne({ _id: null });
@@ -169,7 +160,9 @@ const validateAndNormalize = (data, creating = false) => {
     } else {
       data.slug = slugify(data.slug);
 
-      if (!data.slug) errors.push("Please provide a valid slug.");
+      if (!data.slug) {
+        errors.push("Please provide a valid slug.");
+      }
     }
   }
 
@@ -218,13 +211,13 @@ const validateAndNormalize = (data, creating = false) => {
 
   for (const [field, min, integer] of numericFields) {
     if (data[field] !== undefined) {
-      const error = validateNumber(data[field], field, {
+      const validationError = validateNumber(data[field], field, {
         min,
         integer,
       });
 
-      if (error) {
-        errors.push(error);
+      if (validationError) {
+        errors.push(validationError);
       } else {
         data[field] = Number(data[field]);
       }
@@ -257,14 +250,14 @@ const validateAndNormalize = (data, creating = false) => {
     "lastAttemptStartTime",
   ]) {
     if (data[field] !== undefined) {
-      const error = validateDate(
+      const validationError = validateDate(
         data[field],
         field,
         field === "lastAttemptStartTime"
       );
 
-      if (error) {
-        errors.push(error);
+      if (validationError) {
+        errors.push(validationError);
       } else if (data[field] !== null) {
         data[field] = new Date(data[field]);
       }
@@ -336,24 +329,24 @@ const setUpdatedBy = (mockTest, req) => {
 // CREATE MOCK TEST
 // POST /api/mock-tests
 // ==========================================
-
-
 exports.createMockTest = async (req, res) => {
   try {
     const data = pickEditableFields(req.body);
 
-    // Preserve requested marks
     const requestedTotalMarks = req.body.totalMarks;
     const requestedPassingMarks = req.body.passingMarks;
 
-    // Validate input
-    const errors = validateAndNormalize(data, true);
+    const validationErrors = validateAndNormalize(data, true);
 
-    if (errors.length) {
-      return error(res, null, errors.join(" "), 400);
+    if (validationErrors.length) {
+      return error(
+        res,
+        null,
+        validationErrors.join(" "),
+        400
+      );
     }
 
-    // Generate slug
     if (data.slug === undefined) {
       data.slug = slugify(data.title);
     }
@@ -367,7 +360,6 @@ exports.createMockTest = async (req, res) => {
       );
     }
 
-    // Preserve marks provided by the client
     if (requestedTotalMarks !== undefined) {
       data.totalMarks = requestedTotalMarks;
     }
@@ -376,36 +368,37 @@ exports.createMockTest = async (req, res) => {
       data.passingMarks = requestedPassingMarks;
     }
 
-    // Validate availability dates
     const availabilityError = validateAvailability(data);
 
     if (availabilityError) {
       return error(res, null, availabilityError, 400);
     }
 
-    // Find the latest existing sequential mock test ID
-    const lastMockTest = await MockTest.findOne({
+    // Find existing IDs and determine the highest numeric suffix.
+    // This avoids depending on lexicographical sorting.
+    const existingIds = await MockTest.find({
       id: { $regex: /^MOCKTEST\d+$/ },
     })
-      .sort({ id: -1 })
       .select("id")
       .lean();
 
-    // Calculate the next ID
-    const lastNumber = lastMockTest
-      ? parseInt(lastMockTest.id.replace("MOCKTEST", ""), 10)
-      : 0;
+    const lastNumber = existingIds.reduce((max, item) => {
+      const number = Number(item.id.slice("MOCKTEST".length));
+
+      return Number.isSafeInteger(number) && number > max
+        ? number
+        : max;
+    }, 0);
 
     data.id = `MOCKTEST${String(lastNumber + 1).padStart(5, "0")}`;
 
-    // Every new mock test starts as a draft
+    // New mock tests always start as drafts.
     data.status = "Draft";
     data.sections = [];
     data.totalQuestions = 0;
     data.totalAttempts = 0;
     data.totalCompletions = 0;
 
-    // Set creator and updater
     const userId = req.user?._id || req.user?.id;
 
     if (userId && isValidId(String(userId))) {
@@ -413,7 +406,6 @@ exports.createMockTest = async (req, res) => {
       data.updatedBy = userId;
     }
 
-    // Create and save mock test
     const mockTest = new MockTest(data);
 
     await mockTest.save();
@@ -449,10 +441,7 @@ exports.getAllMockTests = async (req, res) => {
 
     if (req.query.status !== undefined) {
       if (!STATUSES.includes(req.query.status)) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid status filter.",
-        });
+        return error(res, null, "Invalid status filter.", 400);
       }
 
       filter.status = req.query.status;
@@ -460,10 +449,7 @@ exports.getAllMockTests = async (req, res) => {
 
     if (req.query.visibility !== undefined) {
       if (!VISIBILITIES.includes(req.query.visibility)) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid visibility filter.",
-        });
+        return error(res, null, "Invalid visibility filter.", 400);
       }
 
       filter.visibility = req.query.visibility;
@@ -497,18 +483,22 @@ exports.getAllMockTests = async (req, res) => {
       MockTest.countDocuments(filter),
     ]);
 
-    return res.status(200).json({
-      success: true,
-      data: mockTests,
-      pagination: {
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
-      },
-    });
-  } catch (error) {
-    return sendError(res, error);
+    return success(
+      res,
+      mockTests,
+      "Mock tests retrieved successfully.",
+      200,
+      {
+        pagination: {
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit),
+        },
+      }
+    );
+  } catch (err) {
+    return sendError(res, err);
   }
 };
 
@@ -523,20 +513,20 @@ exports.getMockTestById = async (req, res) => {
       .select("-accessCode");
 
     if (!mockTest) {
-      return res.status(404).json({
-        success: false,
-        message: "Mock test not found.",
-      });
+      return error(res, null, "Mock test not found.", 404);
     }
 
-    return res.status(200).json({
-      success: true,
-      data: mockTest,
-    });
-  } catch (error) {
-    return sendError(res, error);
+    return success(
+      res,
+      mockTest,
+      "Mock test retrieved successfully.",
+      200
+    );
+  } catch (err) {
+    return sendError(res, err);
   }
 };
+
 // ==========================================
 // UPDATE MOCK TEST DETAILS
 // PATCH /api/mock-tests/:id
@@ -546,28 +536,29 @@ exports.updateMockTest = async (req, res) => {
     const mockTest = await findMockTest(req.params.id);
 
     if (!mockTest) {
-      return res.status(404).json({
-        success: false,
-        message: "Mock test not found.",
-      });
+      return error(res, null, "Mock test not found.", 404);
     }
 
     const updates = pickEditableFields(req.body);
 
     if (Object.keys(updates).length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: "No editable fields were provided.",
-      });
+      return error(
+        res,
+        null,
+        "No editable fields were provided.",
+        400
+      );
     }
 
-    const errors = validateAndNormalize(updates);
+    const validationErrors = validateAndNormalize(updates);
 
-    if (errors.length) {
-      return res.status(400).json({
-        success: false,
-        message: errors.join(" "),
-      });
+    if (validationErrors.length) {
+      return error(
+        res,
+        null,
+        validationErrors.join(" "),
+        400
+      );
     }
 
     if (
@@ -597,24 +588,24 @@ exports.updateMockTest = async (req, res) => {
     const availabilityError = validateAvailability(finalState);
 
     if (availabilityError) {
-      return res.status(400).json({
-        success: false,
-        message: availabilityError,
-      });
+      return error(res, null, availabilityError, 400);
     }
 
-    mockTest.totalMarks=updates.totalMarks;
-    // console.log(updates)
+    const finalTotalMarks =
+      updates.totalMarks !== undefined
+        ? Number(updates.totalMarks)
+        : Number(mockTest.totalMarks || 0);
 
-    if (updates.passingMarks !== undefined) {
-      const totalMarks = Number(mockTest.totalMarks || 0);
-
-      if (updates.passingMarks > totalMarks) {
-        return res.status(400).json({
-          success: false,
-          message: `Passing marks cannot exceed the current total marks (${totalMarks}).`,
-        });
-      }
+    if (
+      updates.passingMarks !== undefined &&
+      updates.passingMarks > finalTotalMarks
+    ) {
+      return error(
+        res,
+        null,
+        `Passing marks cannot exceed the current total marks (${finalTotalMarks}).`,
+        400
+      );
     }
 
     for (const [key, value] of Object.entries(updates)) {
@@ -622,15 +613,17 @@ exports.updateMockTest = async (req, res) => {
     }
 
     setUpdatedBy(mockTest, req);
+
     await mockTest.save();
 
-    return res.status(200).json({
-      success: true,
-      message: "Mock test updated successfully.",
-      data: mockTest,
-    });
-  } catch (error) {
-    return sendError(res, error);
+    return success(
+      res,
+      mockTest,
+      "Mock test updated successfully.",
+      200
+    );
+  } catch (err) {
+    return sendError(res, err);
   }
 };
 
@@ -643,43 +636,43 @@ exports.publishMockTest = async (req, res) => {
     const mockTest = await findMockTest(req.params.id);
 
     if (!mockTest) {
-      return res.status(404).json({
-        success: false,
-        message: "Mock test not found.",
-      });
+      return error(res, null, "Mock test not found.", 404);
     }
 
     if (!mockTest.sections || mockTest.sections.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Add at least one section before publishing.",
-      });
+      return error(
+        res,
+        null,
+        "Add at least one section before publishing.",
+        400
+      );
     }
 
     if (Number(mockTest.totalQuestions || 0) < 1) {
-      return res.status(400).json({
-        success: false,
-        message: "Add at least one question before publishing.",
-      });
+      return error(
+        res,
+        null,
+        "Add at least one question before publishing.",
+        400
+      );
     }
 
     if (
       Number(mockTest.passingMarks || 0) >
       Number(mockTest.totalMarks || 0)
     ) {
-      return res.status(400).json({
-        success: false,
-        message: "Passing marks cannot exceed total marks.",
-      });
+      return error(
+        res,
+        null,
+        "Passing marks cannot exceed total marks.",
+        400
+      );
     }
 
     const availabilityError = validateAvailability(mockTest);
 
     if (availabilityError) {
-      return res.status(400).json({
-        success: false,
-        message: availabilityError,
-      });
+      return error(res, null, availabilityError, 400);
     }
 
     mockTest.status = "Published";
@@ -687,13 +680,14 @@ exports.publishMockTest = async (req, res) => {
 
     await mockTest.save();
 
-    return res.status(200).json({
-      success: true,
-      message: "Mock test published successfully.",
-      data: mockTest,
-    });
-  } catch (error) {
-    return sendError(res, error);
+    return success(
+      res,
+      mockTest,
+      "Mock test published successfully.",
+      200
+    );
+  } catch (err) {
+    return sendError(res, err);
   }
 };
 
@@ -706,10 +700,7 @@ exports.deactivateMockTest = async (req, res) => {
     const mockTest = await findMockTest(req.params.id);
 
     if (!mockTest) {
-      return res.status(404).json({
-        success: false,
-        message: "Mock test not found.",
-      });
+      return error(res, null, "Mock test not found.", 404);
     }
 
     mockTest.status = "Inactive";
@@ -717,13 +708,14 @@ exports.deactivateMockTest = async (req, res) => {
 
     await mockTest.save();
 
-    return res.status(200).json({
-      success: true,
-      message: "Mock test deactivated successfully.",
-      data: mockTest,
-    });
-  } catch (error) {
-    return sendError(res, error);
+    return success(
+      res,
+      mockTest,
+      "Mock test deactivated successfully.",
+      200
+    );
+  } catch (err) {
+    return sendError(res, err);
   }
 };
 
@@ -736,24 +728,25 @@ exports.deleteMockTest = async (req, res) => {
     const mockTest = await findMockTest(req.params.id);
 
     if (!mockTest) {
-      return res.status(404).json({
-        success: false,
-        message: "Mock test not found.",
-      });
+      return error(res, null, "Mock test not found.", 404);
     }
 
     await mockTest.deleteOne();
 
-    return res.status(200).json({
-      success: true,
-      message: "Mock test deleted successfully.",
-    });
-  } catch (error) {
-    return sendError(res, error);
+    return success(
+      res,
+      null,
+      "Mock test deleted successfully.",
+      200
+    );
+  } catch (err) {
+    return sendError(res, err);
   }
 };
 
-// user
+// ==========================================
+// GET ALL PUBLISHED MOCK TESTS FOR USERS
+// ==========================================
 exports.getAllMockTestsForUser = async (req, res) => {
   try {
     const page = Math.max(
@@ -766,12 +759,10 @@ exports.getAllMockTestsForUser = async (req, res) => {
       Math.max(1, Math.floor(Number(req.query.limit) || 10))
     );
 
-    // Only published mock tests for users
     const filter = {
       status: "Published",
     };
 
-    // Search by title, ID, or slug
     if (req.query.search) {
       const search = String(req.query.search).trim();
 
@@ -801,17 +792,21 @@ exports.getAllMockTestsForUser = async (req, res) => {
       MockTest.countDocuments(filter),
     ]);
 
-    return res.status(200).json({
-      success: true,
-      data: mockTests,
-      pagination: {
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
-      },
-    });
-  } catch (error) {
-    return sendError(res, error);
+    return success(
+      res,
+      mockTests,
+      "Mock tests retrieved successfully.",
+      200,
+      {
+        pagination: {
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit),
+        },
+      }
+    );
+  } catch (err) {
+    return sendError(res, err);
   }
 };
